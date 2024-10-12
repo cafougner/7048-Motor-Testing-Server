@@ -6,31 +6,22 @@ See the [`Frc7048MotorTesting.java`](Frc7048MotorTesting.java) documentation for
 
 To initialize the server, add the following to your `Robot.java`:
 ```java
-public void teleopInit() {
+public void telelopInit() {
+    // See the https://github.com/cafougner/7048-Motor-Testing-Server README.md for more information.
+    MotorTestingServer.stopIfRunning();
+
     // The rest of the teleop initialization code.
+}
 
-    // See the https://github.com/cafougner/7048-Motor-Testing-Server README.md.
-    final boolean MOTOR_TESTING_ENABLED = true;
+public void testInit() {
+    // The rest of the test initialization code.
 
-    // This will attempt to start the motor testing server once teleop starts, and only if motor
-    // testing is enabled and the robot is not connected to an FMS. It should never start during
-    // an actual match, and can be completely disabled if it is not really needed or could fail.
-    if (MOTOR_TESTING_ENABLED && !DriverStation.isFMSAttached()) {
-        new Frc7048MotorTesting();
-    }
-
-    // This will give a reason for why the server didn't start, it can also be logged for later.
-    else {
-        DriverStation.reportWarning(
-            "The motor testing server was not started because" +
-            (MOTOR_TESTING_ENABLED ? "an FMS is attached." : "it is not enabled in this build."),
-            false
-        );
-    }
+    // See the https://github.com/cafougner/7048-Motor-Testing-Server README.md for more information.
+    MotorTestingServer.startIfNotRunning();
 }
 ```
 
-Note that the server **CANNOT** be used as is, except for testing with the app, and will need to be configured per robot. An example implementation of a test (which just generates random values) is all that is included. An actual test should use the command-based framework to run motors for specific times.
+The server as is **CANNOT** be used, except for testing with the app, and it will need to be configured per robot. For testing, the test will need a way to directly drive the motors to test. It should use command-based programming to run the motors at set speeds for amounts of time. Optionally, the test can enable brake mode for some amount of time at the start to ensure that they are not moving, but it shouldn't be necessary.
 
 ## Next Version
 ### TODO:

@@ -9,99 +9,132 @@ import edu.wpi.first.networktables.BooleanSubscriber;
 import edu.wpi.first.networktables.IntegerPublisher;
 import edu.wpi.first.networktables.IntegerSubscriber;
 import edu.wpi.first.networktables.StringPublisher;
-
 import edu.wpi.first.networktables.NetworkTable;
 import edu.wpi.first.networktables.NetworkTableEvent;
 import edu.wpi.first.networktables.NetworkTableInstance;
 
-public class Frc7048MotorTesting {
-    private HashMap<Integer, String> m_testTypes = new HashMap<Integer, String>();
-    private HashMap<Integer, String> m_testStatuses = new HashMap<Integer, String>();
+public class MotorTestingServer {
+    // The robot name is used as a path and cannot contain any special characters.
+    private final static String m_robotName = "2024 Duster";
 
-    private HashMap<Integer, String> m_motorNames = new HashMap<Integer, String>();
-    private HashMap<Integer, String> m_graphNames = new HashMap<Integer, String>();
-    private HashMap<Integer, HashMap<Integer, ArrayList<Double>>> m_testResults = new HashMap<Integer, HashMap<Integer, ArrayList<Double>>>();
+    // The motor names are displayed below the graphs and should be short, the key is arbitrary but
+    // for consistency should be the CAN ID of the motor, even though it is never used.
+    private final static HashMap<Integer, String> m_motorNames = new HashMap<Integer, String>(){{
+        put(1, "DriveFL"); put(2, "SwerveFL"); // Graph 1 (top left)
+        put(3, "DriveFR"); put(4, "SwerveFR"); // Graph 2 (top middle)
+        put(9, "Random Motor"); // Graph 3 (top right)
 
-    private IntegerSubscriber m_dartTestTypeSubscriber;
-    private BooleanSubscriber m_dartTestSignalSubscriber;
+        put(5, "DriveBL"); put(6, "SwerveBL"); // Graph 4 (bottom left)
+        put(7, "DriveBR"); put(8, "SwerveBR"); // Graph 5 (bottom middle)
+        // Graph 6 (bottom right)
+    }};
 
-    private StringPublisher m_robotTestTypesPublisher;
-    private StringPublisher m_robotTestStatusPublisher;
+    // The test names are displayed in the order given and should also be short, the key is used
+    // as part of the file name.
+    private final static HashMap<Integer, String> m_testTypes = new HashMap<Integer, String>(){{
+        put(1, "Swerve Test");
+        put(2, "Another Test");
+    }};
 
-    private StringPublisher m_robotNamePublisher;
-    private IntegerPublisher m_robotTestTypePublisher;
+    // Everything else should not be changed unless the behavior is modified as well.
+    private static boolean m_running = false;
+    private static int m_dartTestSignalListenerHandle;
 
-    private StringPublisher m_robotMotorNamesPublisher;
-    private StringPublisher m_robotGraphNamesPublisher;
-    private StringPublisher m_robotTestResultsPublisher;
+    private static HashMap<Integer, String> m_testStatuses = new HashMap<Integer, String>(){{
+        put(1, "Waiting"); put(2, "Running");
+    }};
 
-    private NetworkTableInstance m_networkTables;
-    private NetworkTable m_networkTable;
+    private static HashMap<Integer, String> m_graphNames = new HashMap<Integer, String>();
+    private static HashMap<Integer, HashMap<Integer, ArrayList<Double>>> m_testResults = new HashMap<Integer, HashMap<Integer, ArrayList<Double>>>();
 
-    public Frc7048MotorTesting() {
-        m_networkTables = NetworkTableInstance.getDefault();
-        m_networkTable = m_networkTables.getTable("FRC7048MotorTesting");
+    private static IntegerSubscriber m_dartTestTypeSubscriber;
+    private static BooleanSubscriber m_dartTestSignalSubscriber;
 
-        // These are used so the robot can communicate its status to the application. These should not be changed (unless the application is updated).
-        m_testStatuses.put(1, "Waiting");
-        m_testStatuses.put(2, "Running");
+    private static StringPublisher m_robotTestTypesPublisher;
+    private static StringPublisher m_robotTestStatusPublisher;
 
-        // Robot configuration
-        String robotName = "2024 Duster"; // This is used as a path to store the baselines and cannot contain special characters.
+    private static StringPublisher m_robotNamePublisher;
+    private static IntegerPublisher m_robotTestTypePublisher;
 
-        m_testTypes.put(1, "Swerve Test"); // The key is used to store the baselines, and the value is what is selected.
-        m_testTypes.put(2, "Another Test");
+    private static StringPublisher m_robotMotorNamesPublisher;
+    private static StringPublisher m_robotGraphNamesPublisher;
+    private static StringPublisher m_robotTestResultsPublisher;
 
-        m_motorNames.put(1, "DriveFL"); // These are used to generate the keys for the graphs. The key is the CAN ID.
-        m_motorNames.put(2, "SwerveFL");
-        m_motorNames.put(3, "DriveFR");
-        m_motorNames.put(4, "SwerveFR");
-        m_motorNames.put(5, "DriveBL");
-        m_motorNames.put(6, "SwerveBL");
-        m_motorNames.put(7, "DriveBR");
-        m_motorNames.put(8, "SwerveBR");
+    private static NetworkTableInstance m_networkTables;
+    private static NetworkTable m_networkTable;
 
-        m_motorNames.put(9, "Random Motor");
-
-        // Creating subscribers.
-        m_dartTestTypeSubscriber = m_networkTable.getIntegerTopic(".dart/TestType").subscribe(1);
-        m_dartTestSignalSubscriber = m_networkTable.getBooleanTopic(".dart/TestSignal").subscribe(false);
-
-        // Creating publishers.
-        m_robotTestTypesPublisher = m_networkTable.getStringTopic(".robot/TestTypes").publish();
-        m_robotTestStatusPublisher = m_networkTable.getStringTopic(".robot/TestStatus").publish();
-
-        m_robotNamePublisher = m_networkTable.getStringTopic(".robot/Name").publish();
-        m_robotTestTypePublisher = m_networkTable.getIntegerTopic(".robot/.data/TestType").publish();
-
-        m_robotMotorNamesPublisher = m_networkTable.getStringTopic(".robot/MotorNames").publish();
-        m_robotGraphNamesPublisher = m_networkTable.getStringTopic(".robot/.data/GraphNames").publish();
-        m_robotTestResultsPublisher = m_networkTable.getStringTopic(".robot/.data/TestResults").publish();
-
-        // Setting the values for all of the publishers.
-        m_robotTestTypesPublisher.set(m_testTypes.toString()); // Sends the HashMap to the application as a String.
-        m_robotTestStatusPublisher.set(m_testStatuses.get(1)); // Sets the default status to "Waiting".
-
-        m_robotNamePublisher.set(robotName);
-
-        m_robotMotorNamesPublisher.set(m_motorNames.toString());
-        m_robotGraphNamesPublisher.set(m_graphNames.toString());
-        m_robotTestResultsPublisher.set(m_testResults.toString());
-
-        // Whenever the test signal is sent, we will schedule the selected test.
-        m_networkTables.addListener(
-            m_dartTestSignalSubscriber,
-            EnumSet.of(NetworkTableEvent.Kind.kValueAll),
-
-            event -> {
-                if (m_dartTestSignalSubscriber.get()) {
-                    scheduleTest((int) m_dartTestTypeSubscriber.get());
-                }
-            }
-        );
+    public static boolean isRunning() {
+        return m_running;
     }
 
-    private void scheduleTest(int testKey) {
+    public static void startIfNotRunning() {
+        if (!m_running) {
+            m_running = true;
+
+            m_networkTables = NetworkTableInstance.getDefault();
+            m_networkTable = m_networkTables.getTable("FRC7048MotorTesting"); 
+
+            // Creating subscribers.
+            m_dartTestTypeSubscriber = m_networkTable.getIntegerTopic(".dart/TestType").subscribe(1);
+            m_dartTestSignalSubscriber = m_networkTable.getBooleanTopic(".dart/TestSignal").subscribe(false);
+
+            // Creating publishers.
+            m_robotTestTypesPublisher = m_networkTable.getStringTopic(".robot/TestTypes").publish();
+            m_robotTestStatusPublisher = m_networkTable.getStringTopic(".robot/TestStatus").publish();
+
+            m_robotNamePublisher = m_networkTable.getStringTopic(".robot/Name").publish();
+            m_robotTestTypePublisher = m_networkTable.getIntegerTopic(".robot/.data/TestType").publish();
+
+            m_robotMotorNamesPublisher = m_networkTable.getStringTopic(".robot/MotorNames").publish();
+            m_robotGraphNamesPublisher = m_networkTable.getStringTopic(".robot/.data/GraphNames").publish();
+            m_robotTestResultsPublisher = m_networkTable.getStringTopic(".robot/.data/TestResults").publish();
+
+            // Setting the values for all of the publishers.
+            m_robotTestTypesPublisher.set(m_testTypes.toString()); // Sends the HashMap to the application as a String.
+            m_robotTestStatusPublisher.set(m_testStatuses.get(1)); // Sets the default status to "Waiting".
+
+            m_robotNamePublisher.set(m_robotName);
+
+            m_robotMotorNamesPublisher.set(m_motorNames.toString());
+            m_robotGraphNamesPublisher.set(m_graphNames.toString());
+            m_robotTestResultsPublisher.set(m_testResults.toString());
+
+            // Whenever the test signal is sent, we will schedule the selected test.
+            m_dartTestSignalListenerHandle = m_networkTables.addListener(
+                m_dartTestSignalSubscriber,
+                EnumSet.of(NetworkTableEvent.Kind.kValueAll),
+
+                event -> {
+                    if (m_dartTestSignalSubscriber.get()) {
+                        scheduleTest((int) m_dartTestTypeSubscriber.get());
+                    }
+                }
+            );
+        }
+    }
+
+    public static void stopIfRunning() {
+        if (m_running) {
+            m_running = false;
+
+            m_networkTables.removeListener(m_dartTestSignalListenerHandle);
+
+            m_dartTestTypeSubscriber.close();
+            m_dartTestSignalSubscriber.close();
+
+            m_robotNamePublisher.close();
+            m_robotTestStatusPublisher.close();
+
+            m_robotNamePublisher.close();
+            m_robotTestTypePublisher.close();
+
+            m_robotMotorNamesPublisher.close();
+            m_robotGraphNamesPublisher.close();
+            m_robotTestResultsPublisher.close();
+        }
+    }
+
+    private static void scheduleTest(int testKey) {
         // Notify the application that the test is running if the test is valid.
         if (m_testTypes.containsKey(testKey)) {
             m_robotTestStatusPublisher.set(m_testStatuses.get(2));
@@ -113,7 +146,7 @@ public class Frc7048MotorTesting {
         m_robotTestStatusPublisher.set(m_testStatuses.get(1));
     }
 
-    private void runTest(int testKey) {
+    private static void runTest(int testKey) {
         // Prints a message like "Running Test 1 (Swerve Test)." to the console.
         System.out.println("Running Test " + testKey + "(" + m_testTypes.get(testKey) + ").");
 
@@ -127,6 +160,8 @@ public class Frc7048MotorTesting {
 
         switch(testKey) {
             case 1:
+                // Tests should also cancel themselves when/if m_running turns to false.
+
                 wait(5000); // This just adds a delay since the test is not actually using commands.
                 // Here, a function would run that would stop all other inputs to the motors, and then they would be set to their speeds.
                 // A command could also change them to run at different speeds, and forward and backward throughout the test routine.
@@ -227,7 +262,7 @@ public class Frc7048MotorTesting {
     }
 
     // TODO: Remove this for code on the actual robot, this is just to make sure the random loop doesn't finish too quickly.
-    private void wait(int milliseconds) {
+    private static void wait(int milliseconds) {
         try {
             Thread.sleep(milliseconds);
         }
